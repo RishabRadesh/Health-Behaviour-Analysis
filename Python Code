@@ -1,0 +1,190 @@
+import pandas as pd
+# Load the dataset
+file_path = '500_Cities__Local_Data_for_Better_Health__2019_release.csv' data = pd.read_csv(file_path)
+data.head()
+# Check for missing values
+missing_values = data.isnull().sum() # Check for duplicates
+duplicates = data.duplicated().sum()
+# Inspect GeoLocation column format and missing values
+geolocation_missing = data['GeoLocation'].isnull().sum()
+print("missing_values",missing_values)
+print("duplicates",duplicates)
+print("geolocation_missing",geolocation_missing)
+# Initial data summary
+initial_summary = {
+'total_rows': data.shape[0], 'total_columns': data.shape[1], 'column_names': data.columns.tolist()
+}
+initial_summary
+# Columns that might not be critical for analysis (based on description)
+columns_to_drop = [
+'Data_Value_Unit', # Assuming all data values are in a consistent unit
+'DataValueTypeID', # Technical ID, not necessary for analysis
+'Data_Value_Type', # Assuming all values are of the same type or this isn't critical for visualizations 'Low_Confidence_Limit', # Confidence limits might not be necessary for broad visualizations 'High_Confidence_Limit', # Same as above
+'Data_Value_Footnote_Symbol', # Footnotes are not essential for initial analysis
+'Data_Value_Footnote', # Same as above
+'CategoryID', # Category should be sufficient without the need for an ID
+'MeasureId' # Measure should be sufficient without the need for an ID
+]
+# Drop identified columns
+reduced_data = data.drop(columns=columns_to_drop)
+# New data summary after dropping columns
+new_summary = {
+'reduced_rows': reduced_data.shape[0], 'reduced_columns': reduced_data.shape[1], 'remaining_column_names': reduced_data.columns.tolist()
+}
+new_summary
+# Calculate the number of records per city to understand distribution
+city_record_distribution = reduced_data['CityName'].value_counts().reset_index() city_record_distribution.columns = ['CityName', 'RecordCount']
+# Determine the number of cities
+num_cities = city_record_distribution.shape[0]
+# Summary of city distribution and the plan for manual stratification approach
+city_distribution_summary = {
+'total_cities': num_cities,
+'city_records_distribution': city_record_distribution.head(), # Show a preview
+}
+city_distribution_summary
+import pandas as pd
+# Assuming 'reduced_data' is your DataFrame after removing null values
+city_counts = reduced_data['CityName'].value_counts()
+# Initialize an empty DataFrame to hold the sampled data
+final_sampled_df = pd.DataFrame()
+# Determine the number of records to sample per city to reach approximately 20,000 entries
+total_target_samples = 20000
+samples_per_city = max(1, total_target_samples // len(city_counts))
+for city in city_counts.index:
+city_subset = reduced_data[reduced_data['CityName'] == city]
+# If the city subset is larger than 'samples_per_city', sample down to that number if len(city_subset) > samples_per_city:
+sampled_subset = city_subset.sample(n=samples_per_city, random_state=42) else:
+        # If the city subset is smaller than the target sample size, use all records
+sampled_subset = city_subset
+# Append the sampled subset (or all records for that city) to the final DataFrame final_sampled_df = pd.concat([final_sampled_df, sampled_subset])
+# If the final DataFrame is larger than the target, sample it down
+if len(final_sampled_df) > total_target_samples:
+final_sampled_df = final_sampled_df.sample(n=total_target_samples, random_state=42)
+final_sampled_df
+# Saving the sampled dataset as a csv
+final_sampled_df.to_csv('Project3_data.csv', index=False)
+# Load the dataset
+file_path = 'Project3_data.csv' data = pd.read_csv(file_path)
+data.head()
+# Check for missing values
+missing_values = data.isnull().sum() # Check for duplicates
+duplicates = data.duplicated().sum()
+# Inspect GeoLocation column format and missing values
+geolocation_missing = data['GeoLocation'].isnull().sum()
+print("missing_values",missing_values)
+print("duplicates",duplicates)
+print("geolocation_missing",geolocation_missing)
+# Removing duplicates
+data_cleaned = data.drop_duplicates()
+# Handling missing values in 'Data_Value' by removing rows with missing 'Data_Value'
+data_cleaned = data_cleaned.dropna(subset=['Data_Value'])
+# Splitting the 'GeoLocation' into two separate columns 'Latitude' and 'Longitude'
+data_cleaned[['Latitude', 'Longitude']] = data_cleaned['GeoLocation'].str.extract(r'\((.*), (.*)\)').astype(float) # Dropping the original 'GeoLocation' column
+data_cleaned = data_cleaned.drop(columns=['GeoLocation']) # Check for missing values
+missing_values = data_cleaned.isnull().sum() # Check for duplicates
+duplicates = data_cleaned.duplicated().sum()
+print("missing_values",missing_values)
+print("duplicates",duplicates)
+print("geolocation_missing",geolocation_missing)
+#Trends in Unhealthy Behaviors: Smoking Rates
+import plotly.express as px
+# Filter the dataset for smoking-related measures
+smoking_data = data_cleaned[data_cleaned['Measure'].str.contains('Current smoking')]
+# Create an interactive map using Plotly Express for smoking data
+fig_smoking = px.scatter_mapbox(smoking_data, lat="Latitude",
+lon="Longitude",
+color="Data_Value",
+size="PopulationCount", color_continuous_scale=px.colors.sequential.Blues, size_max=15,
+zoom=10, mapbox_style="carto-positron", title="Smoking Rates")
+# To save the visualization as an HTML file
+fig_smoking.show() fig_smoking.write_html("smoking_rates_nyc.html")
+# We'll need to extract latitude and longitude from the GeoLocation column
+data[['Latitude', 'Longitude']] = data['GeoLocation'].str.strip('()').str.split(', ', expand=True).astype(float) # For demonstration, let's focus on Obesity rates as the health outcome
+obesity_data = data[data['Short_Question_Text'] == 'Obesity']
+# Assuming there might be multiple entries for a city, we calculate the average Obesity rate
+obesity_avg = obesity_data.groupby('CityName').agg({'Latitude': 'first', 'Longitude': 'first', 'Data_Value': 'mean', 'PopulationCount': 'sum'})
+# Creating the map
+fig = px.scatter_mapbox(obesity_avg, lat="Latitude",
+lon="Longitude",
+size="PopulationCount",
+color="Data_Value",
+hover_name="CityName",
+hover_data=["Data_Value", "PopulationCount"], color_continuous_scale=px.colors.cyclical.IceFire, size_max=15,
+zoom=3, mapbox_style="carto-positron")
+fig.update_layout(title='Obesity Rates by City', geo=dict(scope='usa'),
+margin={"r":0,"t":0,"l":0,"b":0}) fig.write_html("Obesity Rates by City.html")
+# Extract latitude and longitude from the 'GeoLocation' column
+data[['Latitude', 'Longitude']] = data['GeoLocation'].str.strip('()').str.split(', ', expand=True).astype(float)
+# Choose a health metric for the visualization, e.g., 'Diabetes'
+health_metric = 'Diabetes'
+diabetes_data = data[data['Short_Question_Text'] == health_metric]
+# Calculate the average rate of diabetes and the total population for each city
+city_diabetes_data = diabetes_data.groupby('CityName').agg({ 'Latitude': 'mean',
+'Longitude': 'mean',
+'Data_Value': 'mean',
+'PopulationCount': 'sum' }).reset_index()
+# Create a bubble map
+fig = px.scatter_geo(city_diabetes_data, lat='Latitude',
+lon='Longitude',
+size='PopulationCount',
+color='Data_Value',
+hover_name='CityName', hover_data=['Data_Value', 'PopulationCount'], size_max=60,
+title='Bubble Map for Population and Diabetes Rates in USA') fig.update_layout(geo=dict(scope='usa'))
+# Show the plot
+fig.show()
+fig.write_html("Bubble Map for Population and Diabetes Rates in USA.html")
+#Prevention Measures Analysis: Health Insurance Coverage
+# Filter the dataset for health insurance coverage
+insurance_data = data_cleaned[data_cleaned['Measure'].str.contains('health insurance')]
+# Create an interactive map using Plotly Express for health insurance coverage data
+fig_insurance = px.scatter_mapbox(insurance_data, lat="Latitude",
+lon="Longitude",
+color="Data_Value",
+size="PopulationCount", color_continuous_scale=px.colors.sequential.Purples, size_max=15,
+zoom=10, mapbox_style="carto-positron", title="Health Insurance Coverage")
+fig_insurance.show()
+# To save the visualization as an HTML file fig_insurance.write_html("health_insurance_coverage_nyc.html")
+# Filter for a specific health metric, e.g., 'Obesity'
+# Replace 'Obesity' with your specific health metric of interest health_metric = 'Obesity'
+obesity_data = data[data['Short_Question_Text'] == health_metric]
+# Create a box plot to show the distribution of the health metric across different states
+fig = px.box(obesity_data, x='StateDesc', y='Data_Value',
+title=f'State-wise Health Data Distribution of {health_metric}')
+fig.show() # To show the plot
+fig.write_html("State-wise Health Data Distribution.html")
+# Note: You may want to ensure that 'StateDesc' is the correct column name for state descriptions in your dataset. # Also, ensure 'Data_Value' is the column that contains the health metric values you want to plot.
+import pandas as pd
+import plotly.graph_objects as go
+# Aggregate data for each measure across all states
+aggregated_data = data.groupby(['Measure', 'StateDesc'])['Data_Value'].mean().reset_index()
+# Create abbreviations for each measure
+measures = aggregated_data['Measure'].unique()
+abbreviations = {measure: f"M{index+1}" for index, measure in enumerate(measures)}
+# Reverse mapping for using in callbacks
+full_names = {abbr: measure for measure, abbr in abbreviations.items()} # Define the figure
+fig = go.Figure()
+# Initial measure to display
+initial_measure = measures[0]
+initial_abbr = abbreviations[initial_measure]
+# Filter data for the initial measure
+measure_data = aggregated_data[aggregated_data['Measure'] == initial_measure] # Add the bar chart for the initial measure
+fig.add_trace(go.Bar(x=measure_data['StateDesc'], y=measure_data['Data_Value'], name=initial_abbr))
+# Update layout
+fig.update_layout(title_text=f'{initial_measure}', xaxis_title="State",
+yaxis_title="Average Data Value")
+# Dropdown menu for selecting measures
+buttons = [ dict(label=abbreviations[measure],
+method="update",
+args=[{"y": [aggregated_data[aggregated_data['Measure'] == measure]['Data_Value']],
+"x": [aggregated_data[aggregated_data['Measure'] == measure]['StateDesc']],
+                "name": abbreviations[measure]},
+               {"title": f"{measure}"}])
+for measure in measures]
+# Add dropdown to the figure
+fig.update_layout( updatemenus=[dict(buttons=buttons,
+direction="down", pad={"r": 10, "t": 10}, showactive=True,
+x=1,
+xanchor="left",
+y=1.1,
+yanchor="top")])
+fig.show() fig.write_html("abc.html")
